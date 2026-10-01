@@ -211,7 +211,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted
 
 <script>
 'use strict';
-const VERSION = 'v2026-10-01-6';
+const VERSION = 'v2026-10-01-7';
 const DEFAULT_TO = 'compta@snack-et-moi.fr';
 const DEFAULT_COEF = 0.697;
 const TYPES = [
@@ -770,7 +770,7 @@ async function deliver(files, subject, body){
   if (isMobile && navigator.canShare && navigator.canShare({files})){
     try { await navigator.clipboard.writeText(to); toast('Adresse '+to+' copiée'); } catch(e){}
     try {
-      await navigator.share({ files, title:subject, text:`À : ${to}\nObjet : ${subject}\n\n${body}` });
+      await navigator.share({ files, title:subject, text:body });
       return true;
     } catch(e){
       if (e && e.name==='AbortError') return false;
