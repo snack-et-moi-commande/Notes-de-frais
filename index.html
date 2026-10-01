@@ -211,7 +211,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted
 
 <script>
 'use strict';
-const VERSION = 'v2026-10-01-7';
+const VERSION = 'v2026-10-01-8';
 const DEFAULT_TO = 'compta@snack-et-moi.fr';
 const DEFAULT_COEF = 0.697;
 const TYPES = [
@@ -844,6 +844,21 @@ $('nDl').onclick=async()=>{
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000);
 };
 
+/* ---------- hidden reset: tap the version number 5 times ---------- */
+let verTaps=0, verT;
+$('ver').addEventListener('click', async ev=>{
+  ev.stopPropagation();
+  verTaps++; clearTimeout(verT); verT=setTimeout(()=>verTaps=0, 2500);
+  if (verTaps<5) return;
+  verTaps=0;
+  const nd=drafts().length, nn=S.notes.length;
+  const ok = await ask('Effacer les données de test ?', `Cela supprime <b>sur ce téléphone uniquement</b> :<br>• ${nn} note${nn>1?'s':''} transmise${nn>1?'s':''} (historique)<br>• ${nd} dépense${nd>1?'s':''} en cours et leurs photos<br>• la numérotation des notes (repart à 001)<br><br>Le nom et les réglages sont conservés. Les emails déjà envoyés ne sont pas touchés.`, [['Annuler',false],['Tout effacer',true,'primary']]);
+  if (!ok) return;
+  const sure = await ask('Confirmer', 'Cette suppression est définitive. Continuer ?', [['Non',false],['Oui, effacer',true,'primary']]);
+  if (!sure) return;
+  S.expenses.forEach(e=>PDB.del(e.id));
+  S.expenses=[]; S.notes=[]; S.seq=0; save(); render(); toast('Données de test effacées');
+});
 /* ---------- start ---------- */
 document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',ev=>{ if(ev.target===o && o.id!=='ovAsk' && o.id!=='ovDone' && !(o.id==='ovSet'&&!S.settings.name)) { if(o.id==='ovEdit') ocrRun++; close(o.id);} }));
 buildTypes(); render();
