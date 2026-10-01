@@ -9,6 +9,7 @@
 <title>Notes de frais · Snack &amp; Moi</title>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 :root{
   --brand:#A14817; --brand-d:#7E360F; --cream:#FDF6E7; --paper:#FFFDF8;
@@ -210,7 +211,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted
 
 <script>
 'use strict';
-const VERSION = 'v2026-10-01-3';
+const VERSION = 'v2026-10-01-4';
 const DEFAULT_TO = 'compta@snack-et-moi.fr';
 const DEFAULT_COEF = 0.697;
 const TYPES = [
@@ -243,6 +244,18 @@ function save(){
     toast('Mémoire du téléphone pleine : photo non conservée');
     return false;
   }
+}
+/* full-size receipt photos live in IndexedDB (localStorage is too small) */
+const PDB = {
+  db:null,
+  open(){ if (this.db) return this.db; this.db = new Promise((res,rej)=>{ const r=indexedDB.open('ndf_snm_photos',1); r.onupgradeneeded=()=>r.result.createObjectStore('p'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); return this.db; },
+  async op(mode, fn){ const db=await this.open(); return new Promise((res,rej)=>{ const tx=db.transaction('p',mode); const st=tx.objectStore('p'); const rq=fn(st); tx.oncomplete=()=>res(rq&&rq.result); tx.onerror=()=>rej(tx.error); }); },
+  put(k,v){ return this.op('readwrite',st=>st.put(v,k)).catch(()=>null); },
+  get(k){ return this.op('readonly',st=>st.get(k)).catch(()=>null); },
+  del(k){ return this.op('readwrite',st=>st.delete(k)).catch(()=>null); }
+};
+function makeThumb(dataUrl){
+  return new Promise(res=>{ const i=new Image(); i.onload=()=>res(drawScaled(i,160).toDataURL('image/jpeg',.6)); i.onerror=()=>res(null); i.src=dataUrl; });
 }
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
@@ -295,7 +308,7 @@ function render(){
 function itemEl(e, editable){
   const t = TYPE[e.type]||TYPE.autres;
   const b=document.createElement(editable?'button':'div'); b.className='item';
-  const th = e.photo ? `<div class="thumb" style="background-image:url(${e.photo})"></div>` : `<div class="thumb">${t.ic}</div>`;
+  const th = (e.thumb||e.photo) ? `<div class="thumb" style="background-image:url(${e.thumb||e.photo})"></div>` : `<div class="thumb">${t.ic}</div>`;
   const sub = e.type==='km' ? `${num(e.km)} km × ${String(e.coef).replace('.',',')}` : (e.vendor||'');
   b.innerHTML = `${th}<div class="mid"><div class="t1"><span class="badge">${t.l}</span>${esc(e.lieu||'Lieu ?')}</div><div class="t2">${frDate(e.date)}${sub?' · '+esc(sub):''}${e.dupFlag?' · <span class="badge warn">doublon possible</span>':''}</div></div><div class="amt">${euro(amountOf(e))}</div>`;
   if (editable) b.onclick=()=>editExpense(e.id);
@@ -357,6 +370,7 @@ function newExpense(type, photo){
 function editExpense(id){
   const e = S.expenses.find(x=>x.id===id); if (!e || e.status!=='draft') return;
   cur = JSON.parse(JSON.stringify(e)); isNew=false; openEditor();
+  if (e.hasPhoto && !cur.photo) PDB.get(e.id).then(p=>{ if (p && cur && cur.id===e.id){ cur.photo=p; $('ePhoto').src=p; $('ePhoto').classList.remove('hidden'); syncTypeUI(); } });
 }
 $('bKm').onclick=()=>{ if(!needName()) return; newExpense('km'); cur.date=new Date().toISOString().slice(0,10); openEditor(); };
 $('bManual').onclick=()=>{ if(!needName()) return; newExpense('repas'); openEditor(); };
@@ -367,7 +381,7 @@ $('eCancel').onclick=()=>{ ocrRun++; close('ovEdit'); };
 $('eDel').onclick=async()=>{
   const ok = await ask('Supprimer cette dépense ?','Elle sera retirée de la note en cours.',[['Annuler',false],['Supprimer',true,'primary']]);
   if (!ok) return;
-  S.expenses = S.expenses.filter(x=>x.id!==cur.id); save(); close('ovEdit'); render();
+  S.expenses = S.expenses.filter(x=>x.id!==cur.id); PDB.del(cur.id); save(); close('ovEdit'); render();
 };
 $('eSave').onclick=async()=>{
   readForm();
@@ -381,9 +395,14 @@ $('eSave').onclick=async()=>{
   const dup = await checkDuplicate(cur);
   if (dup===false) return;
   cur.dupFlag = dup==='flag' ? true : (cur.dupFlag && dup==='flagKeep');
+  if (cur.photo){
+    await PDB.put(cur.id, cur.photo);
+    cur.thumb = await makeThumb(cur.photo); cur.hasPhoto = true;
+  }
+  const rec = Object.assign({}, cur); delete rec.photo;
   const i = S.expenses.findIndex(x=>x.id===cur.id);
-  if (i>=0) S.expenses[i]=cur; else S.expenses.push(cur);
-  if (!save() && cur.photo){ cur.photo=null; save(); }
+  if (i>=0) S.expenses[i]=rec; else S.expenses.push(rec);
+  if (!save()){ rec.thumb=null; save(); }
   ocrRun++; close('ovEdit'); render(); toast('Dépense enregistrée');
 };
 function showHint(msg, cls){ const h=$('eHint'); h.innerHTML=msg; h.className='hint '+(cls||''); h.scrollIntoView({block:'nearest'}); }
@@ -441,7 +460,7 @@ function preprocess(canvas){
 async function handlePhoto(file){
   let img;
   try { img = await loadImage(file); } catch(e){ toast('Photo illisible'); return; }
-  const thumb = drawScaled(img, 900).toDataURL('image/jpeg', .6);
+  const thumb = drawScaled(img, 1500).toDataURL('image/jpeg', .7);
   newExpense('autres', thumb);
   openEditor();
   const run = ++ocrRun;
@@ -693,7 +712,7 @@ $('bSend').onclick=()=>{
   const by={}; d.forEach(e=>{ const k=TYPE[e.type].l; by[k]=(by[k]||0)+amountOf(e); });
   const tot=d.reduce((s,e)=>s+amountOf(e),0);
   $('sRecap').innerHTML = Object.entries(by).map(([k,v])=>`<tr><td>${k}</td><td>${euro(v)}</td></tr>`).join('') + `<tr class="tot"><td>Total · ${d.length} dépense${d.length>1?'s':''} · ${periodOf(d)}</td><td>${euro(tot)}</td></tr>`;
-  $('sAv').value=''; $('sTo').innerHTML=`Destinataire : <b>${esc(S.settings.to)}</b><br>Le fichier Excel sera joint à l'email.`;
+  $('sAv').value=''; $('sTo').innerHTML=`Destinataire : <b>${esc(S.settings.to)}</b><br>Seront joints à l'email : le fichier Excel et un PDF des photos des reçus.`;
   open('ovSend');
 };
 $('sCancel').onclick=()=>close('ovSend');
@@ -710,16 +729,19 @@ $('sGo').onclick=async()=>{
     const blob = await buildXlsx(note, items);
     const fname = `${number}_${S.settings.name.replace(/[^A-Za-zÀ-ÿ0-9]+/g,'_')}.xlsx`;
     const subject = `Note de frais ${number} – ${S.settings.name} – ${note.period}`;
-    const body = `Bonjour,\n\nVeuillez trouver ci-joint ma demande de remboursement de frais.\n\nN° de note : ${number}\nPériode : ${note.period}\nNombre de dépenses : ${items.length}\nTotal : ${euro(note.total)}${note.advances?`\nAvances : ${euro(note.advances)}\nReste dû : ${euro(note.total-note.advances)}`:''}\n\nLes justificatifs originaux seront remis à la comptabilité.\n\nCordialement,\n${S.settings.name}`;
+    const body = `Bonjour,\n\nVeuillez trouver ci-joint ma demande de remboursement de frais (fichier Excel) ainsi que les photos des reçus (PDF).\n\nN° de note : ${number}\nPériode : ${note.period}\nNombre de dépenses : ${items.length}\nTotal : ${euro(note.total)}${note.advances?`\nAvances : ${euro(note.advances)}\nReste dû : ${euro(note.total-note.advances)}`:''}\n\nLes justificatifs originaux seront remis à la comptabilité.\n\nCordialement,\n${S.settings.name}`;
     const file = new File([blob], fname, {type:blob.type});
-    const generated = await deliver(file, subject, body);
+    const files = [file];
+    const pdf = await buildReceiptsPdf(note, items);
+    if (pdf) files.push(new File([pdf], `${number}_recus.pdf`, {type:'application/pdf'}));
+    const generated = await deliver(files, subject, body);
     if (!generated){ toast('Envoi annulé : la note reste en cours'); return; }
     // lock: note transmitted
     S.seq = seq;
-    items.forEach(e=>{ const x=S.expenses.find(y=>y.id===e.id); x.status='sent'; x.noteId=note.id; x.photo=null; delete x.ocrText; });
+    items.forEach(e=>{ const x=S.expenses.find(y=>y.id===e.id); x.status='sent'; x.noteId=note.id; x.photo=null; x.thumb=null; x.hasPhoto=false; delete x.ocrText; PDB.del(x.id); });
     S.notes.push(note); save();
     close('ovSend'); render();
-    $('dTxt').innerHTML = `La note <b>${esc(number)}</b> (${euro(note.total)}) est transmise et verrouillée. Elle reste consultable dans l'onglet « Transmises ».`;
+    $('dTxt').innerHTML = `La note <b>${esc(number)}</b> (${euro(note.total)}) est transmise et verrouillée. Les photos des reçus sont parties en PDF avec l'email. La note reste consultable dans l'onglet « Transmises ».`;
     open('ovDone');
   } catch(e){
     console.error(e); toast('Erreur lors de la préparation : '+e.message);
@@ -728,26 +750,66 @@ $('sGo').onclick=async()=>{
 $('dOk').onclick=()=>close('ovDone');
 
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
-async function deliver(file, subject, body){
+async function deliver(files, subject, body){
   const to = S.settings.to;
-  // Mobile: share sheet with the Excel attached (as in the order app). Recipient copied to clipboard.
-  if (isMobile && navigator.canShare && navigator.canShare({files:[file]})){
+  const names = files.map(f=>f.name).join(' et ');
+  // Mobile: share sheet with the attachments (as in the order app). Recipient copied to clipboard.
+  if (isMobile && navigator.canShare && navigator.canShare({files})){
     try { await navigator.clipboard.writeText(to); toast('Adresse '+to+' copiée'); } catch(e){}
     try {
-      await navigator.share({ files:[file], title:subject, text:`À : ${to}\nObjet : ${subject}\n\n${body}` });
+      await navigator.share({ files, title:subject, text:`À : ${to}\nObjet : ${subject}\n\n${body}` });
       return true;
     } catch(e){
       if (e && e.name==='AbortError') return false;
-      // some Android builds reject text+files together: retry file only
-      try { await navigator.share({ files:[file] }); return true; } catch(e2){ if (e2 && e2.name==='AbortError') return false; }
+      // some Android builds reject text+files together: retry files only
+      try { await navigator.share({ files }); return true; } catch(e2){ if (e2 && e2.name==='AbortError') return false; }
     }
   }
-  // Desktop / fallback: download the file + open the mail client pre-filled
-  const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name; document.body.appendChild(a); a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000);
-  const mail = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body+'\n\n[Joindre le fichier '+file.name+' téléchargé]')}`;
-  setTimeout(()=>{ window.location.href = mail; }, 400);
+  // Desktop / fallback: download the files + open the mail client pre-filled
+  files.forEach((f,i)=>setTimeout(()=>downloadBlob(f, f.name), i*600));
+  const mail = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body+'\n\n[Joindre les fichiers téléchargés : '+names+']')}`;
+  setTimeout(()=>{ window.location.href = mail; }, files.length*600+300);
   return true;
+}
+function downloadBlob(blob, name){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000);
+}
+
+/* PDF of receipt photos, numbered like the "Justificatifs" sheet */
+async function buildReceiptsPdf(note, items){
+  if (!window.jspdf) return null;
+  const withPhoto = [];
+  for (let i=0;i<items.length;i++){
+    const e=items[i]; if (e.type==='km') continue;
+    const p = e.hasPhoto ? await PDB.get(e.id) : (e.photo||null);
+    withPhoto.push({n:i+1, e, p});
+  }
+  if (!withPhoto.length) return null;
+  const doc = new jspdf.jsPDF({unit:'mm', format:'a4'});
+  const W=210, H=297, M=12;
+  withPhoto.forEach((r,k)=>{
+    if (k) doc.addPage();
+    doc.setFillColor(161,72,23); doc.rect(0,0,W,22,'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text(`Justificatif n° ${r.n}  ·  ${note.number}`, M, 9.5);
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    const line = `${frDate(r.e.date)}${r.e.time?' '+r.e.time:''}  ·  ${TYPE[r.e.type].l}  ·  ${euro(amountOf(r.e)).replace(/ | /g,' ')}  ·  ${[r.e.lieu,r.e.vendor].filter(Boolean).join(' – ')}`;
+    doc.text(doc.splitTextToSize(line, W-2*M)[0], M, 17);
+    doc.setTextColor(60,60,60);
+    if (r.p){
+      const props = doc.getImageProperties(r.p);
+      const maxW=W-2*M, maxH=H-22-2*M-6;
+      const k2=Math.min(maxW/props.width, maxH/props.height);
+      const w=props.width*k2, h=props.height*k2;
+      doc.addImage(r.p, 'JPEG', (W-w)/2, 22+M, w, h);
+    } else {
+      doc.setFontSize(12); doc.text('Pas de photo pour cette dépense (saisie manuelle).', M, 40);
+    }
+    doc.setFontSize(8); doc.setTextColor(130,130,130);
+    doc.text(`${note.name}  ·  page ${k+1}/${withPhoto.length}  ·  original papier remis à la comptabilité`, M, H-6);
+  });
+  return doc.output('blob');
 }
 
 /* ---------- history ---------- */
