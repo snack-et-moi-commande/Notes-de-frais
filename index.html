@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#A14817">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Notes de frais">
+<title>Notes de frais · Snack &amp; Moi</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+:root{
+  --brand:#A14817; --brand-d:#7E360F; --cream:#FDF6E7; --paper:#FFFDF8;
+  --ink:#2B2522; --muted:#7A6E66; --line:#E8DFD2; --ok:#2F7D4F; --warn:#B7791F; --err:#B42318;
+  --r:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--cream);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:5;background:var(--brand);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 0}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.top h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.2px}
+.top small{display:block;font-size:11px;opacity:.75;font-weight:400}
+.iconbtn{background:rgba(255,255,255,.15);border:0;border-radius:10px;color:#fff;padding:8px 10px;font-size:14px}
+.tabs{display:flex;margin-top:10px}
+.tab{flex:1;background:none;border:0;color:rgba(255,255,255,.7);padding:10px 0 12px;font-weight:600;border-bottom:3px solid transparent}
+.tab.on{color:#fff;border-bottom-color:#fff}
+main{max-width:640px;margin:0 auto;padding:16px 16px 140px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.sum{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px}
+.sum .lbl{font-size:13px;color:var(--muted)}
+.sum .big{font-size:30px;font-weight:700;letter-spacing:-.5px}
+.who{font-size:13px;color:var(--muted);text-align:right}
+.who b{color:var(--ink);font-size:15px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.btn{border:0;border-radius:12px;padding:13px 14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer}
+.btn.primary{background:var(--brand);color:#fff}
+.btn.primary:active{background:var(--brand-d)}
+.btn.ghost{background:var(--paper);border:1px solid var(--line)}
+.btn.full{grid-column:1/-1;width:100%}
+.btn.cam{grid-column:1/-1;padding:18px;font-size:17px}
+.btn:disabled{opacity:.45}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:22px 4px 8px;font-weight:700}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{display:flex;gap:12px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;width:100%;text-align:left}
+.thumb{width:46px;height:46px;border-radius:8px;background:#EFE6D8 center/cover no-repeat;flex:none;display:flex;align-items:center;justify-content:center;font-size:20px}
+.item .mid{flex:1;min-width:0}
+.item .t1{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .t2{font-size:13px;color:var(--muted)}
+.item .amt{font-weight:700;white-space:nowrap}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;background:#F3E3D6;color:var(--brand-d);margin-right:6px}
+.badge.ok{background:#E3F1E8;color:var(--ok)}
+.badge.warn{background:#FBEFD9;color:var(--warn)}
+.empty{text-align:center;color:var(--muted);padding:28px 10px;font-size:15px}
+.sendbar{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(transparent,var(--cream) 30%);padding:24px 16px calc(14px + env(safe-area-inset-bottom));z-index:4}
+.sendbar .btn{max-width:608px;margin:0 auto;width:100%;font-size:17px;padding:16px}
+/* sheet / modal */
+.ov{position:fixed;inset:0;background:rgba(30,20,15,.45);z-index:20;display:none;align-items:flex-end;justify-content:center}
+.ov.on{display:flex}
+.sheet{background:var(--paper);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+@media(min-width:700px){.ov{align-items:center}.sheet{border-radius:18px}}
+.sheet h3{margin:0 0 12px;font-size:19px}
+.f{margin-bottom:12px}
+.f label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:5px}
+.f input,.f select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:16px}
+.f input:focus,.f select:focus{outline:2px solid var(--brand);border-color:transparent}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.types{display:flex;flex-wrap:wrap;gap:6px}
+.types button{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 12px;font-size:14px}
+.types button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.photo{width:100%;max-height:240px;object-fit:contain;background:#EFE6D8;border-radius:10px;margin-bottom:12px;display:block}
+.ocr{font-size:13px;color:var(--muted);margin:-4px 0 12px;display:flex;align-items:center;gap:8px}
+.bar{flex:1;height:5px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--brand);width:0;transition:width .2s}
+.hint{font-size:13px;padding:10px 12px;border-radius:10px;background:#FBEFD9;color:#6B4A12;margin-bottom:12px}
+.hint.info{background:#EAF1FB;color:#1F3B63}
+.hint.err{background:#FDE8E7;color:var(--err)}
+.btns{display:flex;gap:10px;margin-top:6px}
+.btns .btn{flex:1}
+.calc{font-size:14px;color:var(--muted);margin:-4px 0 12px}
+.recap{width:100%;border-collapse:collapse;font-size:14px;margin:6px 0 12px}
+.recap td{padding:6px 0;border-bottom:1px solid var(--line)}
+.recap td:last-child{text-align:right;font-weight:600}
+.recap tr.tot td{font-weight:700;font-size:16px;border-bottom:0}
+.originals{display:flex;gap:10px;align-items:flex-start;background:#FFF4E5;border:1px solid #F1D3A8;color:#5A3A10;border-radius:12px;padding:12px;font-size:14px;margin-bottom:12px}
+.originals .ico{font-size:22px;line-height:1}
+.toast{position:fixed;left:50%;top:calc(80px + env(safe-area-inset-top));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:40;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw}
+.toast.on{opacity:1}
+.note-h{display:flex;justify-content:space-between;align-items:center}
+.lock{font-size:13px;color:var(--ok);font-weight:600}
+.hidden{display:none!important}
+.muted{color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>Notes de frais<small>Snack &amp; Moi · <span id="ver"></span></small></h1>
+    <button class="iconbtn" id="bSettings" aria-label="Réglages">⚙︎ Réglages</button>
+  </div>
+  <div class="tabs">
+    <button class="tab on" data-tab="cur">En cours</button>
+    <button class="tab" data-tab="hist">Transmises</button>
+  </div>
+</header>
+
+<main>
+  <section id="vCur">
+    <div class="card sum">
+      <div><div class="lbl">Note en cours</div><div class="big" id="curTotal">0,00 €</div><div class="lbl" id="curCount">Aucune dépense</div></div>
+      <div class="who">Au nom de<br><b id="curName">—</b></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary cam" id="bPhoto">📷 Photographier un reçu</button>
+      <button class="btn ghost" id="bGallery">🖼 Depuis les photos</button>
+      <button class="btn ghost" id="bKm">🚗 Trajet en km</button>
+      <button class="btn ghost full" id="bManual">✍︎ Saisir sans photo</button>
+    </div>
+    <input type="file" id="fCam" accept="image/*" capture="environment" class="hidden">
+    <input type="file" id="fGal" accept="image/*" class="hidden">
+    <h2>Dépenses à transmettre</h2>
+    <div class="list" id="curList"></div>
+  </section>
+
+  <section id="vHist" class="hidden">
+    <div class="list" id="histList"></div>
+  </section>
+</main>
+
+<div class="sendbar" id="sendbar"><button class="btn primary" id="bSend">✉︎ Envoyer la demande de remboursement</button></div>
+
+<!-- Expense editor -->
+<div class="ov" id="ovEdit"><div class="sheet">
+  <h3 id="eTitle">Dépense</h3>
+  <img id="ePhoto" class="photo hidden" alt="Reçu">
+  <div class="ocr hidden" id="eOcr"><span id="eOcrTxt">Lecture du reçu…</span><div class="bar"><i id="eOcrBar"></i></div></div>
+  <div class="hint hidden" id="eHint"></div>
+  <div class="f"><label>Type de dépense</label><div class="types" id="eTypes"></div></div>
+  <div class="row2">
+    <div class="f"><label for="eDate">Date</label><input type="date" id="eDate"></div>
+    <div class="f" id="wAmt"><label for="eAmt">Montant TTC (€)</label><input id="eAmt" inputmode="decimal" placeholder="0,00"></div>
+    <div class="f hidden" id="wKm"><label for="eKm">Kilomètres</label><input id="eKm" inputmode="decimal" placeholder="0"></div>
+  </div>
+  <div class="calc hidden" id="eKmCalc"></div>
+  <div class="f"><label for="eLieu">Lieu (ville)</label><input id="eLieu" placeholder="ex. Bayonne"></div>
+  <div class="f" id="wFour"><label for="eFour">Fournisseur / enseigne</label><input id="eFour" placeholder="ex. Restaurant Le Txoko"></div>
+  <div class="f hidden" id="wHeure"><label for="eHeure">Heure du ticket (si lisible)</label><input type="time" id="eHeure"></div>
+  <div class="btns">
+    <button class="btn ghost" id="eDel">Supprimer</button>
+    <button class="btn ghost" id="eCancel">Annuler</button>
+    <button class="btn primary" id="eSave">Enregistrer</button>
+  </div>
+</div></div>
+
+<!-- Send -->
+<div class="ov" id="ovSend"><div class="sheet">
+  <h3>Demande de remboursement</h3>
+  <table class="recap" id="sRecap"></table>
+  <div class="f"><label for="sAv">Avances déjà perçues (€)</label><input id="sAv" inputmode="decimal" placeholder="0,00"></div>
+  <div class="hint info" id="sTo"></div>
+  <div class="originals"><span class="ico">🧾</span><div><b>Justificatifs originaux</b><br>Une fois la demande envoyée, pensez à remettre les reçus papier originaux à la comptabilité.</div></div>
+  <div class="hint">Après génération de l'email, cette note est <b>définitivement transmise</b> : ses dépenses ne pourront plus faire l'objet d'une autre demande.</div>
+  <div class="btns">
+    <button class="btn ghost" id="sCancel">Annuler</button>
+    <button class="btn primary" id="sGo">Générer l'email</button>
+  </div>
+</div></div>
+
+<!-- Done -->
+<div class="ov" id="ovDone"><div class="sheet">
+  <h3>✅ Note transmise</h3>
+  <p id="dTxt" style="margin-top:0"></p>
+  <div class="originals"><span class="ico">🧾</span><div><b>N'oubliez pas les originaux</b><br>Remettez les justificatifs papier originaux de cette note à la comptabilité. Notez au dos de chaque reçu son numéro (voir onglet « Justificatifs » du fichier Excel).</div></div>
+  <div class="btns"><button class="btn primary" id="dOk">J'ai compris</button></div>
+</div></div>
+
+<!-- Settings -->
+<div class="ov" id="ovSet"><div class="sheet">
+  <h3>Réglages</h3>
+  <div class="hint info hidden" id="setFirst">Bienvenue ! Indiquez votre nom : il apparaîtra sur vos notes de frais.</div>
+  <div class="f"><label for="stName">Nom et prénom</label><input id="stName" autocomplete="name" placeholder="ex. Antton Echeverria"></div>
+  <div class="f"><label for="stTo">Email de la comptabilité</label><input id="stTo" type="email"></div>
+  <div class="f"><label for="stCoef">Indemnité kilométrique (€/km)</label><input id="stCoef" inputmode="decimal"></div>
+  <p class="muted">Les données sont enregistrées sur ce téléphone uniquement.</p>
+  <div class="btns">
+    <button class="btn ghost" id="stCancel">Fermer</button>
+    <button class="btn primary" id="stSave">Enregistrer</button>
+  </div>
+</div></div>
+
+<!-- Generic dialog -->
+<div class="ov" id="ovAsk" style="z-index:30"><div class="sheet">
+  <h3 id="aTitle"></h3><div id="aTxt" style="margin-bottom:14px"></div>
+  <div class="btns" id="aBtns"></div>
+</div></div>
+
+<!-- Note detail -->
+<div class="ov" id="ovNote"><div class="sheet">
+  <div class="note-h"><h3 id="nTitle" style="margin:0"></h3><span class="lock">🔒 Transmise</span></div>
+  <p class="muted" id="nSub"></p>
+  <div class="list" id="nList"></div>
+  <div class="btns" style="margin-top:14px">
+    <button class="btn ghost" id="nClose">Fermer</button>
+    <button class="btn ghost" id="nDl">⬇︎ Copie Excel</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const VERSION = 'v2026-10-01-3';
+const DEFAULT_TO = 'compta@snack-et-moi.fr';
+const DEFAULT_COEF = 0.697;
+const TYPES = [
+  {k:'repas',  l:'Repas',   ic:'🍽'},
+  {k:'hotel',  l:'Hôtel',   ic:'🛏'},
+  {k:'essence',l:'Essence', ic:'⛽'},
+  {k:'peage',  l:'Péage',   ic:'🛣'},
+  {k:'autres', l:'Autres',  ic:'🧾'},
+  {k:'km',     l:'Kilomètres', ic:'🚗'}
+];
+const TYPE = Object.fromEntries(TYPES.map(t=>[t.k,t]));
+
+/* ---------- storage ---------- */
+const LS = 'ndf_snm_v1';
+let S = load();
+function load(){
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(LS)); } catch(e) {}
+  d = d || {};
+  d.settings = Object.assign({name:'', to:DEFAULT_TO, coef:DEFAULT_COEF}, d.settings||{});
+  d.expenses = d.expenses || [];   // drafts + transmitted
+  d.notes = d.notes || [];
+  d.seq = d.seq || 0;
+  return d;
+}
+function save(){
+  try { localStorage.setItem(LS, JSON.stringify(S)); return true; }
+  catch(e){
+    // storage full: drop photos of oldest drafts? Never silently. Warn.
+    toast('Mémoire du téléphone pleine : photo non conservée');
+    return false;
+  }
+}
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const euro = n => (Math.round((+n||0)*100)/100).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+const num = s => { if (s===''||s==null) return 0; const v = parseFloat(String(s).replace(/\s/g,'').replace(',','.')); return isFinite(v)?v:0; };
+const r2 = n => Math.round(n*100)/100;
+const frDate = iso => iso ? iso.split('-').reverse().join('/') : '—';
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function amountOf(e){ return e.type==='km' ? r2(num(e.km)*num(e.coef)) : r2(num(e.amount)); }
+const drafts = () => S.expenses.filter(e=>e.status==='draft').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+let toastT;
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2600); }
+function open(id){ $(id).classList.add('on'); }
+function close(id){ $(id).classList.remove('on'); }
+function ask(title, html, buttons){
+  return new Promise(res=>{
+    $('aTitle').textContent = title; $('aTxt').innerHTML = html;
+    const b = $('aBtns'); b.innerHTML='';
+    buttons.forEach(([label,val,cls])=>{
+      const x=document.createElement('button'); x.className='btn '+(cls||'ghost'); x.textContent=label;
+      x.onclick=()=>{ close('ovAsk'); res(val); }; b.appendChild(x);
+    });
+    open('ovAsk');
+  });
+}
+
+/* ---------- render ---------- */
+function render(){
+  $('ver').textContent = VERSION;
+  const d = drafts();
+  const tot = d.reduce((s,e)=>s+amountOf(e),0);
+  $('curTotal').textContent = euro(tot);
+  $('curCount').textContent = d.length ? `${d.length} dépense${d.length>1?'s':''}` : 'Aucune dépense';
+  $('curName').textContent = S.settings.name || '—';
+  $('bSend').disabled = !d.length;
+  const L = $('curList');
+  L.innerHTML = d.length ? '' : '<div class="empty">Photographiez vos reçus au fil de la tournée.<br>Ils s\'ajoutent ici jusqu\'à l\'envoi de la demande.</div>';
+  d.forEach(e=>L.appendChild(itemEl(e,true)));
+  const H = $('histList');
+  const notes = [...S.notes].sort((a,b)=>b.sentAt.localeCompare(a.sentAt));
+  H.innerHTML = notes.length ? '' : '<div class="empty">Aucune note transmise pour l\'instant.</div>';
+  notes.forEach(n=>{
+    const b=document.createElement('button'); b.className='item';
+    b.innerHTML = `<div class="thumb">🔒</div><div class="mid"><div class="t1">${esc(n.number)}</div><div class="t2">Envoyée le ${new Date(n.sentAt).toLocaleDateString('fr-FR')} · ${n.ids.length} dépense${n.ids.length>1?'s':''}</div></div><div class="amt">${euro(n.total)}</div>`;
+    b.onclick=()=>showNote(n); H.appendChild(b);
+  });
+}
+function itemEl(e, editable){
+  const t = TYPE[e.type]||TYPE.autres;
+  const b=document.createElement(editable?'button':'div'); b.className='item';
+  const th = e.photo ? `<div class="thumb" style="background-image:url(${e.photo})"></div>` : `<div class="thumb">${t.ic}</div>`;
+  const sub = e.type==='km' ? `${num(e.km)} km × ${String(e.coef).replace('.',',')}` : (e.vendor||'');
+  b.innerHTML = `${th}<div class="mid"><div class="t1"><span class="badge">${t.l}</span>${esc(e.lieu||'Lieu ?')}</div><div class="t2">${frDate(e.date)}${sub?' · '+esc(sub):''}${e.dupFlag?' · <span class="badge warn">doublon possible</span>':''}</div></div><div class="amt">${euro(amountOf(e))}</div>`;
+  if (editable) b.onclick=()=>editExpense(e.id);
+  return b;
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  const h = t.dataset.tab==='hist';
+  $('vCur').classList.toggle('hidden',h); $('vHist').classList.toggle('hidden',!h);
+  $('sendbar').classList.toggle('hidden',h);
+});
+
+/* ---------- editor ---------- */
+let cur = null;      // expense being edited (copy)
+let isNew = false;
+let ocrRun = 0;
+function buildTypes(){
+  const w=$('eTypes'); w.innerHTML='';
+  TYPES.forEach(t=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.k=t.k; b.textContent=t.ic+' '+t.l;
+    b.onclick=()=>{ cur.type=t.k; syncTypeUI(); }; w.appendChild(b);
+  });
+}
+function syncTypeUI(){
+  document.querySelectorAll('#eTypes button').forEach(b=>b.classList.toggle('on',b.dataset.k===cur.type));
+  const km = cur.type==='km';
+  $('wAmt').classList.toggle('hidden',km); $('wKm').classList.toggle('hidden',!km);
+  $('eKmCalc').classList.toggle('hidden',!km); $('wFour').classList.toggle('hidden',km);
+  $('wHeure').classList.toggle('hidden', km || !cur.photo);
+  $('eLieu').placeholder = km ? 'ex. Bayonne → Pau → Bayonne' : 'ex. Bayonne';
+  $('eLieu').previousElementSibling.textContent = km ? 'Trajet' : 'Lieu (ville)';
+  updKm();
+}
+function updKm(){
+  if (cur.type!=='km') return;
+  const c = num(cur.coef||S.settings.coef);
+  $('eKmCalc').textContent = `${num($('eKm').value)} km × ${String(c).replace('.',',')} €/km = ${euro(num($('eKm').value)*c)}`;
+}
+$('eKm').oninput = updKm;
+function fillForm(){
+  $('eDate').value = cur.date||''; $('eAmt').value = cur.amount!=null&&cur.amount!=='' ? num(cur.amount).toFixed(2).replace('.',',') : '';
+  $('eKm').value = cur.km||''; $('eLieu').value = cur.lieu||''; $('eFour').value = cur.vendor||''; $('eHeure').value = cur.time||'';
+}
+function readForm(){
+  cur.date=$('eDate').value; cur.amount=$('eAmt').value.trim()===''?'':r2(num($('eAmt').value));
+  cur.km=$('eKm').value.trim()===''?'':num($('eKm').value); cur.lieu=$('eLieu').value.trim(); cur.vendor=$('eFour').value.trim(); cur.time=$('eHeure').value;
+}
+function openEditor(){
+  $('eTitle').textContent = isNew ? (cur.type==='km'?'Nouveau trajet':'Nouvelle dépense') : 'Modifier la dépense';
+  $('ePhoto').classList.toggle('hidden',!cur.photo); if (cur.photo) $('ePhoto').src=cur.photo;
+  $('eDel').classList.toggle('hidden',isNew);
+  $('eHint').className='hint hidden';
+  fillForm(); syncTypeUI(); open('ovEdit');
+}
+function newExpense(type, photo){
+  cur = {id:uid(), status:'draft', type:type||'autres', date:new Date().toISOString().slice(0,10), amount:'', km:'', lieu:'', vendor:'', time:'', photo:photo||null, coef:S.settings.coef, createdAt:new Date().toISOString()};
+  isNew = true;
+}
+function editExpense(id){
+  const e = S.expenses.find(x=>x.id===id); if (!e || e.status!=='draft') return;
+  cur = JSON.parse(JSON.stringify(e)); isNew=false; openEditor();
+}
+$('bKm').onclick=()=>{ if(!needName()) return; newExpense('km'); cur.date=new Date().toISOString().slice(0,10); openEditor(); };
+$('bManual').onclick=()=>{ if(!needName()) return; newExpense('repas'); openEditor(); };
+$('bPhoto').onclick=()=>{ if(!needName()) return; $('fCam').value=''; $('fCam').click(); };
+$('bGallery').onclick=()=>{ if(!needName()) return; $('fGal').value=''; $('fGal').click(); };
+$('fCam').onchange = $('fGal').onchange = ev => { const f=ev.target.files&&ev.target.files[0]; if (f) handlePhoto(f); };
+$('eCancel').onclick=()=>{ ocrRun++; close('ovEdit'); };
+$('eDel').onclick=async()=>{
+  const ok = await ask('Supprimer cette dépense ?','Elle sera retirée de la note en cours.',[['Annuler',false],['Supprimer',true,'primary']]);
+  if (!ok) return;
+  S.expenses = S.expenses.filter(x=>x.id!==cur.id); save(); close('ovEdit'); render();
+};
+$('eSave').onclick=async()=>{
+  readForm();
+  const err = [];
+  if (!cur.date) err.push('la date');
+  if (cur.type==='km' ? !(num(cur.km)>0) : !(num(cur.amount)>0)) err.push(cur.type==='km'?'le nombre de km':'le montant TTC');
+  if (!cur.lieu) err.push(cur.type==='km'?'le trajet':'le lieu');
+  if (err.length){ showHint('Merci de renseigner '+err.join(', ')+'.','err'); return; }
+  if (cur.type==='km') cur.coef = num(cur.coef||S.settings.coef);
+  // duplicate control
+  const dup = await checkDuplicate(cur);
+  if (dup===false) return;
+  cur.dupFlag = dup==='flag' ? true : (cur.dupFlag && dup==='flagKeep');
+  const i = S.expenses.findIndex(x=>x.id===cur.id);
+  if (i>=0) S.expenses[i]=cur; else S.expenses.push(cur);
+  if (!save() && cur.photo){ cur.photo=null; save(); }
+  ocrRun++; close('ovEdit'); render(); toast('Dépense enregistrée');
+};
+function showHint(msg, cls){ const h=$('eHint'); h.innerHTML=msg; h.className='hint '+(cls||''); h.scrollIntoView({block:'nearest'}); }
+
+/* Duplicate rules:
+   - same date + same amount + same type as an already TRANSMITTED receipt:
+       • same ticket time (both known) -> blocked (same receipt)
+       • otherwise -> explicit confirmation, line flagged "doublon possible" for the accounting
+   - same as another DRAFT -> confirmation, flagged */
+async function checkDuplicate(e){
+  if (e.type==='km') return 'none';
+  const a = amountOf(e);
+  const same = S.expenses.filter(x=>x.id!==e.id && x.type===e.type && x.date===e.date && Math.abs(amountOf(x)-a)<0.005);
+  if (!same.length) return 'none';
+  const sent = same.filter(x=>x.status==='sent');
+  if (sent.length){
+    const exact = sent.find(x=>x.time && e.time && x.time===e.time);
+    const note = S.notes.find(n=>n.ids.includes((exact||sent[0]).id));
+    if (exact){
+      await ask('Reçu déjà transmis', `Ce reçu (${TYPE[e.type].l}, ${frDate(e.date)} à ${e.time}, ${euro(a)}) a déjà été transmis dans la note <b>${esc(note?note.number:'')}</b>.<br><br>Il ne peut pas faire l'objet d'une nouvelle demande de remboursement.`, [['Compris',true,'primary']]);
+      return false;
+    }
+    const go = await ask('Déjà remboursé ?', `Une dépense identique (${TYPE[e.type].l}, ${frDate(e.date)}, ${euro(a)}) a déjà été transmise dans la note <b>${esc(note?note.number:'')}</b>.<br><br>Une dépense déjà transmise ne peut pas être redemandée. S'il s'agit bien d'un <b>autre reçu</b>, confirmez : la ligne sera signalée « doublon possible » à la comptabilité.`, [['Annuler',false],['Autre reçu, ajouter',true,'primary']]);
+    return go ? 'flag' : false;
+  }
+  const go = await ask('Doublon ?', `Une dépense identique (${TYPE[e.type].l}, ${frDate(e.date)}, ${euro(a)}) est déjà dans la note en cours.`, [['Annuler',false],['Ajouter quand même',true,'primary']]);
+  return go ? 'flag' : false;
+}
+
+/* ---------- photo + OCR ---------- */
+function loadImage(file){
+  return new Promise((res,rej)=>{
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onload=()=>{ res(img); setTimeout(()=>URL.revokeObjectURL(url),1000); };
+    img.onerror=()=>rej(new Error('Image illisible')); img.src=url;
+  });
+}
+function drawScaled(img, max){
+  const k = Math.min(1, max/Math.max(img.naturalWidth,img.naturalHeight));
+  const c = document.createElement('canvas'); c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height); return c;
+}
+function preprocess(canvas){
+  // grayscale + contrast stretch: helps on thermal receipts
+  const ctx = canvas.getContext('2d'); const d = ctx.getImageData(0,0,canvas.width,canvas.height); const p=d.data;
+  const hist = new Uint32Array(256);
+  for (let i=0;i<p.length;i+=4){ const g=(p[i]*.299+p[i+1]*.587+p[i+2]*.114)|0; p[i]=g; hist[g]++; }
+  const tot=p.length/4; let lo=0,hi=255,acc=0;
+  for (let v=0;v<256;v++){ acc+=hist[v]; if (acc>tot*.02){ lo=v; break; } }
+  acc=0; for (let v=255;v>=0;v--){ acc+=hist[v]; if (acc>tot*.02){ hi=v; break; } }
+  const span=Math.max(1,hi-lo);
+  for (let i=0;i<p.length;i+=4){ let g=(p[i]-lo)*255/span; g=g<0?0:g>255?255:g; p[i]=p[i+1]=p[i+2]=g; }
+  ctx.putImageData(d,0,0); return canvas;
+}
+async function handlePhoto(file){
+  let img;
+  try { img = await loadImage(file); } catch(e){ toast('Photo illisible'); return; }
+  const thumb = drawScaled(img, 900).toDataURL('image/jpeg', .6);
+  newExpense('autres', thumb);
+  openEditor();
+  const run = ++ocrRun;
+  $('eOcr').classList.remove('hidden'); $('eOcrTxt').textContent='Lecture du reçu…'; $('eOcrBar').style.width='5%';
+  try {
+    const text = await ocr(preprocess(drawScaled(img, 1800)), p=>{ if(run===ocrRun) $('eOcrBar').style.width=Math.round(5+p*95)+'%'; });
+    if (run!==ocrRun) return;
+    const r = parseReceipt(text);
+    cur.ocrText = text.slice(0,2000);
+    readForm();
+    if (r.type) cur.type=r.type;
+    if (r.date) cur.date=r.date;
+    if (r.amount) cur.amount=r.amount;
+    if (r.city && !cur.lieu) cur.lieu=r.city;
+    if (r.vendor && !cur.vendor) cur.vendor=r.vendor;
+    if (r.time) cur.time=r.time;
+    fillForm(); syncTypeUI();
+    $('eOcr').classList.add('hidden');
+    const miss=[]; if(!r.date) miss.push('la date'); if(!r.amount) miss.push('le montant'); if(!r.city) miss.push('le lieu');
+    showHint(miss.length ? `Reçu lu. Je n'ai pas trouvé ${miss.join(', ')} : à compléter.<br>Vérifiez aussi les autres champs avant d'enregistrer.` : 'Reçu lu ✔︎ Vérifiez le type, la date et le montant TTC avant d\'enregistrer.', miss.length?'':'info');
+  } catch(e){
+    if (run!==ocrRun) return;
+    console.error(e);
+    $('eOcr').classList.add('hidden');
+    showHint('Lecture automatique impossible (connexion requise la première fois). Saisissez les champs à la main.','');
+  }
+}
+let workerP = null;
+function getWorker(onProg){
+  if (!workerP){
+    const opts = Object.assign({ logger: m=>{ if (m.status==='recognizing text' && getWorker.cb) getWorker.cb(m.progress); } }, window.TESS_OPTS||{});
+    workerP = Tesseract.createWorker('fra', 1, opts).catch(e=>{ workerP=null; throw e; });
+  }
+  getWorker.cb = onProg; return workerP;
+}
+async function ocr(canvas, onProg){
+  if (!window.Tesseract) throw new Error('OCR non chargé');
+  const w = await getWorker(onProg);
+  const { data } = await w.recognize(canvas);
+  return data.text||'';
+}
+
+/* ---------- receipt parsing ---------- */
+const KW = {
+  essence: [/carbur/,/gazole|gasoil|diesel|go\b/,/sp\s?9[58]|sans\s?plomb|e10|e85|super/,/litres?|\bl\s*x|prix\s*\/\s*l|€\s*\/\s*l/,/total\s?energies|esso|avia|\bbp\b|shell|elan|station|pompe|volucompteur|distributeur/],
+  peage:   [/p[ée]age/,/autoroute|asf|vinci|sanef|aprr|area|cofiroute|atlandes|a63|a64|a65/,/classe\s*\d|gare|entr[ée]e|sortie/],
+  hotel:   [/h[oô]tel/,/nuit[ée]e?s?|chambre|s[ée]jour|petit[- ]d[ée]jeuner/,/taxe\s*de\s*s[ée]jour|ibis|b\s*&\s*b|campanile|kyriad|premi[eè]re\s*classe|logis|booking/],
+  repas:   [/restaurant|resto|brasserie|bistro|auberge|cr[êe]perie|pizz|sushi|burger|kebab|snack|caf[ée]|bar\b|boulangerie|traiteur/,/menu|plat|entr[ée]e|dessert|formule|boisson|couverts?|table\s*\d|serveur|convives?/,/sandwich|salade|vin|bi[eè]re|eau\b|coca|quiche|tapas|pintxo/]
+};
+function guessType(t){
+  let best=null, bs=0;
+  for (const [k,rs] of Object.entries(KW)){
+    let s=0; rs.forEach(r=>{ if (r.test(t)) s++; });
+    if (k==='peage' && /p[ée]age/.test(t)) s+=2;
+    if (k==='essence' && /carbur|gazole|sans\s?plomb|sp\s?9[58]/.test(t)) s+=2;
+    if (k==='hotel' && /h[oô]tel|nuit[ée]e/.test(t)) s+=1;
+    if (s>bs){ bs=s; best=k; }
+  }
+  return bs>=1 ? best : 'autres';
+}
+const MONTHS = {janv:1,jan:1,fevr:2,fev:2,fevrier:2,mars:3,avr:4,avril:4,mai:5,juin:6,juil:7,juillet:7,aout:8,sept:9,sep:9,oct:10,nov:11,dec:12};
+function parseDate(t){
+  const now = new Date(); const cands=[];
+  const add=(d,m,y,pos)=>{
+    y=+y; if (y<100) y+=2000; d=+d; m=+m;
+    if (m<1||m>12||d<1||d>31||y<2000) return;
+    const dt=new Date(y,m-1,d); if (dt.getMonth()!==m-1) return;
+    const age=(now-dt)/864e5; if (age<-2||age>400) return;
+    cands.push({iso:`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`,pos});
+  };
+  let m; const re1=/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4}|\d{2})(?!\d)/g;
+  while((m=re1.exec(t))) add(m[1],m[2],m[3],m.index);
+  const tn=t.normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const re2=/(\d{1,2})\s+(janv|jan|fevr|fev|fevrier|mars|avr|avril|mai|juin|juil|juillet|aout|sept|sep|oct|nov|dec)[a-z]*\.?\s+(\d{4}|\d{2})/g;
+  while((m=re2.exec(tn))) add(m[1],MONTHS[m[2]],m[3],m.index);
+  const re3=/(20\d{2})[\-\/](\d{1,2})[\-\/](\d{1,2})/g;
+  while((m=re3.exec(t))) add(m[3],m[2],m[1],m.index);
+  return cands.length ? cands[0].iso : '';
+}
+function parseTime(t){
+  const m = t.match(/\b([01]?\d|2[0-3])\s*[:hH]\s*([0-5]\d)(?:\s*[:]\s*[0-5]\d)?\b/);
+  return m ? `${m[1].padStart(2,'0')}:${m[2]}` : '';
+}
+function amountsIn(line){
+  const out=[]; const re=/(\d{1,3}(?:[ . ]\d{3})+|\d+)\s?[,.]\s?(\d{2})(?!\d)/g; let m;
+  while((m=re.exec(line))){ const v=parseFloat(m[1].replace(/[ . ]/g,'')+'.'+m[2]); if (v>0 && v<5000) out.push(v); }
+  return out;
+}
+function parseAmount(lines){
+  let best=null;
+  lines.forEach((ln,i)=>{
+    const l=ln.toLowerCase();
+    if (/\bht\b|hors\s*tax|t\.?v\.?a|taux|base|rendu|monnaie|esp[eè]ces\s*rendu|remise|[ée]conomis|fid[ée]lit|points?\b|\/\s*l\b|prix\s*unit|p\.?u\.?/.test(l) && !/ttc/.test(l)) return;
+    let sc=0;
+    if (/net\s*[àa]\s*payer|total\s*ttc|montant\s*ttc|ttc|[àa]\s*payer|total\s*[àa]\s*payer/.test(l)) sc=5;
+    else if (/sous[- ]?total/.test(l)) sc=1;
+    else if (/total/.test(l)) sc=4;
+    else if (/montant|somme|d[ée]bit|paiement|r[ée]gl[ée]|carte|\bcb\b|visa|mastercard|\beur\b|€/.test(l)) sc=2;
+    if (!sc) return;
+    let vals = amountsIn(ln);
+    if (!vals.length && lines[i+1]) vals = amountsIn(lines[i+1]);
+    if (!vals.length) return;
+    const v = Math.max(...vals);
+    if (!best || sc>best.sc || (sc===best.sc && v>best.v)) best={sc,v};
+  });
+  if (best) return r2(best.v);
+  const all=[]; lines.forEach(l=>{ if(!/t\.?v\.?a|\bht\b|\/\s*l\b/i.test(l)) all.push(...amountsIn(l)); });
+  return all.length ? r2(Math.max(...all)) : '';
+}
+const cap = s => s.toLowerCase().replace(/(^|[\s\-'’])([a-zàâäéèêëîïôöùûüç])/g,(m,a,b)=>a+b.toUpperCase());
+function parseCity(lines){
+  for (const ln of lines){
+    const m = ln.match(/\b(\d{5,6})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\- ]{2,40})/);
+    if (m && /^(0[1-9]|[1-8]\d|9[0-5]|97)/.test(m[1]) && /^[A-ZÀ-Ý]/.test(m[2])){
+      let c=m[2].replace(/\b(cedex|tel|tél|t[ée]l[ée]phone|fax|siret|france)\b.*$/i,'').replace(/[\s\-]+$/,'').trim();
+      if (c.length>=3) return cap(c);
+    }
+  }
+  return '';
+}
+function parseVendor(lines){
+  for (const ln of lines.slice(0,6)){
+    const s=ln.replace(/[^A-Za-zÀ-ÿ0-9&'’\- .]/g,' ').replace(/\s+/g,' ').trim();
+    if (s.replace(/[^A-Za-zÀ-ÿ]/g,'').length<3) continue;
+    if (/bienvenue|ticket|facture|re[çc]u|merci|duplicata|client|^tel|^t[ée]l|siret|www\.|@/i.test(s)) continue;
+    return cap(s).slice(0,40);
+  }
+  return '';
+}
+function parseReceipt(text){
+  const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const low = text.toLowerCase();
+  return { type:guessType(low), date:parseDate(text), time:parseTime(text), amount:parseAmount(lines), city:parseCity(lines), vendor:parseVendor(lines) };
+}
+
+/* ---------- settings ---------- */
+function needName(){ if (S.settings.name) return true; openSettings(true); return false; }
+function openSettings(first){
+  $('setFirst').classList.toggle('hidden',!first);
+  $('stName').value=S.settings.name; $('stTo').value=S.settings.to; $('stCoef').value=String(S.settings.coef).replace('.',',');
+  open('ovSet');
+}
+$('bSettings').onclick=()=>openSettings(false);
+$('stCancel').onclick=()=>close('ovSet');
+$('stSave').onclick=()=>{
+  const n=$('stName').value.trim(); if(!n){ $('stName').focus(); return; }
+  const to=$('stTo').value.trim()||DEFAULT_TO; const c=num($('stCoef').value)||DEFAULT_COEF;
+  S.settings={name:n,to,coef:c}; save(); close('ovSet'); render(); toast('Réglages enregistrés');
+};
+
+/* ---------- Excel (same layout as note_de_frais26.xls) ---------- */
+const COLS = {repas:'G',hotel:'H',essence:'I',peage:'J',autres:'K'};
+const EUR = '#,##0.00 "€"';
+const C_BRAND='FFA14817', C_ROW='FFFDF6E7', C_GREY='FFEAEAEA', C_GREY2='FFC0C0C0', C_MONTH='FFD9D9D9';
+async function buildXlsx(note, items){
+  const wb = new ExcelJS.Workbook(); wb.creator='Snack & Moi – Notes de frais'; wb.created=new Date(note.sentAt);
+  const ws = wb.addWorksheet('Note de frais', {pageSetup:{orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1,margins:{left:.4,right:.4,top:.5,bottom:.5,header:.3,footer:.3}}, views:[{showGridLines:false}]});
+  const w=[0.6,11.4,27.4,11.1,11.1,13.6,11.1,11.1,12,13.9,18.3,11.7];
+  w.forEach((x,i)=>ws.getColumn(i+1).width=x);
+  const font=(o={})=>Object.assign({name:'Tahoma',size:10,color:{argb:'FF333333'}},o);
+  const thin={style:'thin',color:{argb:'FF999999'}};
+  const fill=c=>({type:'pattern',pattern:'solid',fgColor:{argb:c}});
+  ws.getRow(2).height=32;
+  ws.mergeCells('B2:L2');
+  Object.assign(ws.getCell('B2'),{value:'Note de frais SNACK & MOI'}); ws.getCell('B2').font=font({size:24,color:{argb:C_BRAND}});
+  ws.getRow(5).height=24;
+  ws.getCell('B5').value="INFORMATIONS SUR L'EMPLOYÉ :"; ws.getCell('B5').font=font({size:9,bold:true,color:{argb:'FF808080'}});
+  ws.getCell('E5').value=/^Du /.test(note.period)?'Période :':'Mois :'; ws.getCell('E5').font=font({bold:true}); ws.getCell('E5').alignment={horizontal:'center'};
+  ws.getCell('E5').border={top:thin,bottom:thin,left:thin};
+  ws.mergeCells('G5:I5'); ws.getCell('G5').value=note.period; ws.getCell('G5').font={name:'Arial',size:10,bold:true}; ws.getCell('G5').fill=fill(C_MONTH);
+  ws.getCell('G5').alignment={horizontal:'center'}; ['G5','H5','I5'].forEach(k=>ws.getCell(k).border={top:thin,bottom:thin,left:k==='G5'?thin:undefined,right:k==='I5'?thin:undefined});
+  ws.getCell('F5').border={top:thin,bottom:thin};
+  ws.getCell('B6').value='Nom'; ws.getCell('B6').font=font({size:9});
+  ws.getCell('C6').value=note.name; ws.getCell('C6').font=font({bold:true});
+  ws.mergeCells('E6:F6'); ws.getCell('E6').value='N° de note :'; ws.getCell('E6').font=font();
+  ws.getCell('G6').value=note.number; ws.getCell('G6').font=font({bold:true});
+  ws.mergeCells('E7:F7'); ws.getCell('E7').value='Transmise le :'; ws.getCell('E7').font=font();
+  ws.getCell('G7').value=new Date(note.sentAt).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}); ws.getCell('G7').font=font();
+  const H=['Date','Lieu','Kms','Coef','Total frais Kms','Repas','Hotel','Essence','Péage','Autres','Total'];
+  ws.getRow(9).height=20;
+  H.forEach((h,i)=>{ const c=ws.getCell(9,i+2); c.value=h; c.font=font({size:9,bold:true,color:{argb:'FFFFFFFF'}}); c.fill=fill(C_BRAND); c.alignment={horizontal:'center',vertical:'middle',wrapText:true}; c.border={top:thin,left:thin,right:thin}; });
+  const first=10, nRows=Math.max(26, items.length), last=first+nRows-1;
+  for (let i=0;i<nRows;i++){
+    const r=first+i, e=items[i]; ws.getRow(r).height=17;
+    for (let c=2;c<=12;c++){ const cell=ws.getCell(r,c); cell.font=font(); cell.fill=fill(c===12?C_GREY:C_ROW); cell.border={left:thin,right:c===12?thin:undefined}; }
+    ws.getCell(r,2).numFmt='dd/mm/yyyy'; ws.getCell(r,2).alignment={horizontal:'center'};
+    ws.getCell(r,5).numFmt='0.000'; ws.getCell(r,5).alignment={horizontal:'center'};
+    ['F','G','H','I','J','K','L'].forEach(col=>ws.getCell(col+r).numFmt=EUR);
+    let fKm=0, tot=0;
+    if (e){
+      const [y,m,d]=e.date.split('-').map(Number);
+      ws.getCell(r,2).value=new Date(Date.UTC(y,m-1,d));
+      ws.getCell(r,3).alignment={shrinkToFit:true}; ws.getCell(r,3).value = e.type==='km' ? e.lieu : [e.lieu, e.vendor].filter(Boolean).join(' – ');
+      if (e.type==='km'){ ws.getCell(r,4).value=num(e.km); ws.getCell(r,5).value=num(e.coef); fKm=r2(num(e.km)*num(e.coef)); }
+      else { ws.getCell(COLS[e.type]+r).value=r2(num(e.amount)); }
+      tot=amountOf(e);
+    }
+    ws.getCell('F'+r).value={formula:`IF(D${r}="",0,ROUND(D${r}*E${r},2))`, result:fKm};
+    ws.getCell('L'+r).value={formula:`SUM(F${r}:K${r})`, result:tot};
+  }
+  const t=last+1, sum=(col)=>items.reduce((s,e)=>s+(col==='D'?(e.type==='km'?num(e.km):0):col==='F'?(e.type==='km'?amountOf(e):0):col==='L'?amountOf(e):(COLS[e.type]===col?num(e.amount):0)),0);
+  ['B','C','D','E','F','G','H','I','J','K','L'].forEach(col=>{
+    const c=ws.getCell(col+t); c.fill=fill(col==='L'?C_GREY2:C_GREY); c.font=font({bold:col!=='B'&&col!=='C'}); c.border={bottom:thin,left:thin,right:col==='L'?thin:undefined,top:thin};
+    if (['D','F','G','H','I','J','K','L'].includes(col)){ c.value={formula:`SUM(${col}${first}:${col}${last})`, result:r2(sum(col))}; c.numFmt= col==='D'?'0.00':EUR; c.alignment={horizontal:'center'}; }
+  });
+  const total=r2(sum('L')), av=r2(num(note.advances));
+  const lab=(r,txt)=>{ const c=ws.getCell('K'+r); c.value=txt; c.font=font({bold:true}); c.alignment={horizontal:'right'}; };
+  lab(t+1,'Sous-total'); lab(t+2,'Avances'); lab(t+3,'Total');
+  const L=(r,v)=>{ const c=ws.getCell('L'+r); c.value=v; c.numFmt=EUR; c.fill=fill(C_GREY); c.font=font(); c.alignment={horizontal:'center'}; c.border={left:thin,right:thin}; return c; };
+  L(t+1,{formula:`L${t}`,result:total});
+  L(t+2,av||0);
+  const ct=L(t+3,{formula:`L${t+1}-L${t+2}`,result:r2(total-av)}); ct.font=font({bold:true}); ct.border={left:thin,right:thin,bottom:thin};
+  ws.getCell(`B${t+3}`).value='Justificatifs originaux remis à la comptabilité.'; ws.getCell(`B${t+3}`).font=font({size:9,italic:true,color:{argb:'FF808080'}});
+  ws.pageSetup.printArea=`A1:L${t+3}`;
+
+  // detail sheet: numbered receipts so the paper originals can be matched
+  const d = wb.addWorksheet('Justificatifs', {views:[{showGridLines:false}], pageSetup:{orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  [6,12,12,28,30,9,10,13,22].forEach((x,i)=>d.getColumn(i+1).width=x);
+  d.getCell('A1').value=`Justificatifs – ${note.number} – ${note.name}`; d.getCell('A1').font=font({size:14,bold:true,color:{argb:C_BRAND}});
+  const DH=['N°','Date','Type','Lieu / trajet','Fournisseur','Heure','Kms','Montant TTC','Remarque'];
+  DH.forEach((h,i)=>{ const c=d.getCell(3,i+1); c.value=h; c.font=font({bold:true,color:{argb:'FFFFFFFF'},size:9}); c.fill=fill(C_BRAND); c.alignment={horizontal:'center'}; });
+  items.forEach((e,i)=>{
+    const r=4+i, [y,m,dd]=e.date.split('-').map(Number);
+    const vals=[i+1,new Date(Date.UTC(y,m-1,dd)),TYPE[e.type].l,e.lieu,e.type==='km'?'':e.vendor,e.time||'',e.type==='km'?num(e.km):'',amountOf(e),
+      e.dupFlag?'Doublon possible : montant et date identiques à une autre dépense':(e.type==='km'?'Indemnité kilométrique, pas de justificatif':'')];
+    vals.forEach((v,j)=>{ const c=d.getCell(r,j+1); c.value=v; c.font=font({color:{argb:(j===8&&e.dupFlag)?'FFB42318':'FF333333'}}); c.fill=fill(i%2?'FFFFFFFF':C_ROW); c.border={bottom:{style:'hair',color:{argb:'FFCCCCCC'}}}; });
+    d.getCell(r,2).numFmt='dd/mm/yyyy'; d.getCell(r,8).numFmt=EUR; d.getCell(r,1).alignment={horizontal:'center'};
+  });
+  const tr=4+items.length; d.getCell(tr,7).value='Total'; d.getCell(tr,7).font=font({bold:true});
+  d.getCell(tr,8).value={formula:`SUM(H4:H${tr-1})`,result:total}; d.getCell(tr,8).numFmt=EUR; d.getCell(tr,8).font=font({bold:true});
+  const buf = await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+/* ---------- send ---------- */
+function initials(n){ return n.split(/\s+/).filter(Boolean).map(w=>w[0]).join('').toUpperCase().slice(0,3)||'X'; }
+function periodOf(items){
+  const ds=items.map(e=>e.date).sort(), a=ds[0], b=ds[ds.length-1];
+  if (a.slice(0,7)===b.slice(0,7)){
+    const M=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+    return M[+a.slice(5,7)-1]+' '+a.slice(0,4);
+  }
+  return 'Du '+frDate(a)+' au '+frDate(b);
+}
+$('bSend').onclick=()=>{
+  const d=drafts(); if(!d.length) return; if(!needName()) return;
+  const bad=d.filter(e=>!e.date||!(amountOf(e)>0));
+  if (bad.length){ toast('Une dépense est incomplète'); editExpense(bad[0].id); return; }
+  const by={}; d.forEach(e=>{ const k=TYPE[e.type].l; by[k]=(by[k]||0)+amountOf(e); });
+  const tot=d.reduce((s,e)=>s+amountOf(e),0);
+  $('sRecap').innerHTML = Object.entries(by).map(([k,v])=>`<tr><td>${k}</td><td>${euro(v)}</td></tr>`).join('') + `<tr class="tot"><td>Total · ${d.length} dépense${d.length>1?'s':''} · ${periodOf(d)}</td><td>${euro(tot)}</td></tr>`;
+  $('sAv').value=''; $('sTo').innerHTML=`Destinataire : <b>${esc(S.settings.to)}</b><br>Le fichier Excel sera joint à l'email.`;
+  open('ovSend');
+};
+$('sCancel').onclick=()=>close('ovSend');
+let sending=false;
+$('sGo').onclick=async()=>{
+  if (sending) return; sending=true; $('sGo').disabled=true; $('sGo').textContent='Préparation…';
+  try {
+    const items = drafts();
+    const seq = S.seq+1;
+    const now = new Date();
+    const number = `NDF-${initials(S.settings.name)}-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}-${String(seq).padStart(3,'0')}`;
+    const note = { id:uid(), number, name:S.settings.name, sentAt:now.toISOString(), period:periodOf(items), advances:r2(num($('sAv').value)), ids:items.map(e=>e.id), to:S.settings.to };
+    note.total = r2(items.reduce((s,e)=>s+amountOf(e),0));
+    const blob = await buildXlsx(note, items);
+    const fname = `${number}_${S.settings.name.replace(/[^A-Za-zÀ-ÿ0-9]+/g,'_')}.xlsx`;
+    const subject = `Note de frais ${number} – ${S.settings.name} – ${note.period}`;
+    const body = `Bonjour,\n\nVeuillez trouver ci-joint ma demande de remboursement de frais.\n\nN° de note : ${number}\nPériode : ${note.period}\nNombre de dépenses : ${items.length}\nTotal : ${euro(note.total)}${note.advances?`\nAvances : ${euro(note.advances)}\nReste dû : ${euro(note.total-note.advances)}`:''}\n\nLes justificatifs originaux seront remis à la comptabilité.\n\nCordialement,\n${S.settings.name}`;
+    const file = new File([blob], fname, {type:blob.type});
+    const generated = await deliver(file, subject, body);
+    if (!generated){ toast('Envoi annulé : la note reste en cours'); return; }
+    // lock: note transmitted
+    S.seq = seq;
+    items.forEach(e=>{ const x=S.expenses.find(y=>y.id===e.id); x.status='sent'; x.noteId=note.id; x.photo=null; delete x.ocrText; });
+    S.notes.push(note); save();
+    close('ovSend'); render();
+    $('dTxt').innerHTML = `La note <b>${esc(number)}</b> (${euro(note.total)}) est transmise et verrouillée. Elle reste consultable dans l'onglet « Transmises ».`;
+    open('ovDone');
+  } catch(e){
+    console.error(e); toast('Erreur lors de la préparation : '+e.message);
+  } finally { sending=false; $('sGo').disabled=false; $('sGo').textContent="Générer l'email"; }
+};
+$('dOk').onclick=()=>close('ovDone');
+
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+async function deliver(file, subject, body){
+  const to = S.settings.to;
+  // Mobile: share sheet with the Excel attached (as in the order app). Recipient copied to clipboard.
+  if (isMobile && navigator.canShare && navigator.canShare({files:[file]})){
+    try { await navigator.clipboard.writeText(to); toast('Adresse '+to+' copiée'); } catch(e){}
+    try {
+      await navigator.share({ files:[file], title:subject, text:`À : ${to}\nObjet : ${subject}\n\n${body}` });
+      return true;
+    } catch(e){
+      if (e && e.name==='AbortError') return false;
+      // some Android builds reject text+files together: retry file only
+      try { await navigator.share({ files:[file] }); return true; } catch(e2){ if (e2 && e2.name==='AbortError') return false; }
+    }
+  }
+  // Desktop / fallback: download the file + open the mail client pre-filled
+  const a=document.createElement('a'); a.href=URL.createObjectURL(file); a.download=file.name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000);
+  const mail = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body+'\n\n[Joindre le fichier '+file.name+' téléchargé]')}`;
+  setTimeout(()=>{ window.location.href = mail; }, 400);
+  return true;
+}
+
+/* ---------- history ---------- */
+let shownNote=null;
+function showNote(n){
+  shownNote=n;
+  $('nTitle').textContent=n.number;
+  $('nSub').innerHTML=`Envoyée le ${new Date(n.sentAt).toLocaleString('fr-FR',{dateStyle:'long',timeStyle:'short'})} à ${esc(n.to||'')} · Période ${esc(n.period)} · Total ${euro(n.total)}${n.advances?` · Avances ${euro(n.advances)}`:''}`;
+  const L=$('nList'); L.innerHTML='';
+  n.ids.map(id=>S.expenses.find(e=>e.id===id)).filter(Boolean).forEach(e=>L.appendChild(itemEl(e,false)));
+  open('ovNote');
+}
+$('nClose').onclick=()=>close('ovNote');
+$('nDl').onclick=async()=>{
+  if(!shownNote) return;
+  const items=shownNote.ids.map(id=>S.expenses.find(e=>e.id===id)).filter(Boolean);
+  const blob=await buildXlsx(shownNote, items);
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${shownNote.number}_copie.xlsx`; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000);
+};
+
+/* ---------- start ---------- */
+document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',ev=>{ if(ev.target===o && o.id!=='ovAsk' && o.id!=='ovDone' && !(o.id==='ovSet'&&!S.settings.name)) { if(o.id==='ovEdit') ocrRun++; close(o.id);} }));
+buildTypes(); render();
+if (!S.settings.name) openSettings(true);
+</script>
+</body>
+</html>
